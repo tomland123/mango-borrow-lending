@@ -3,13 +3,14 @@ import {
   borrowAndWithdraw,
   getSymbolForTokenMintAddress,
   initMarginAccountAndDeposit,
-} from "./utils";
-import { MangoClient, IDS } from "@blockworks-foundation/mango-client";
-import { Market } from "@project-serum/serum";
-import { PublicKey, Connection } from "@solana/web3.js";
-import { formatTokenMints, getOwnedSplTokenAccounts } from "./utils";
+} from './utils';
+import { MangoClient, IDS } from '@blockworks-foundation/mango-client';
+import { Market } from '@project-serum/serum';
+import { PublicKey, Connection } from '@solana/web3.js';
+import { formatTokenMints, getOwnedSplTokenAccounts } from './utils';
 
-import { WRAPPED_SOL_MINT } from "@project-serum/serum/lib/token-instructions";
+import { WRAPPED_SOL_MINT } from '@project-serum/serum/lib/token-instructions';
+import { floorToDecimal, tokenPrecision } from './variables';
 
 export class MangoBorrowLending {
   constructor(
@@ -47,7 +48,7 @@ export class MangoBorrowLending {
   }
 
   getBalances() {
-    console.log("todo!");
+    console.log('todo!');
   }
   //https://github.com/blockworks-foundation/mango-ui-v2/blob/cfc09fb3c4a3f0abf1da50ac53ae5ec5a4b97251/utils/mango.tsx#L651
   async settleBorrow() {}
@@ -108,7 +109,7 @@ export class MangoBorrowLending {
       (sym) => !symbolsForAccounts.includes(sym),
     );
 
-    console.log(activeWallets, missingTokens, "???");
+    console.log(activeWallets, missingTokens, '???');
     return { activeWallets, missingTokens };
   }
   async initAccountAndDeposit({ tokenDetail, quantity }) {
@@ -162,14 +163,14 @@ export class MangoBorrowLending {
           TOKEN_MINTS.find((token) =>
             token.address.equals(market.baseMintAddress),
           )?.name) ||
-        "...";
+        '...';
 
       const quoteCurrency =
         (market?.quoteMintAddress &&
           TOKEN_MINTS.find((token) =>
             token.address.equals(market.quoteMintAddress),
           )?.name) ||
-        "...";
+        '...';
 
       return {
         market,
@@ -182,16 +183,16 @@ export class MangoBorrowLending {
   }
 
   static async create({
-    cluster = "mainnet-beta",
-    mangoGroupName = "BTC_ETH_SOL_SRM_USDC",
+    cluster = 'mainnet-beta',
+    mangoGroupName = 'BTC_ETH_SOL_SRM_USDC',
     markets = null,
     payerPriv = null,
     fetchMarkets = true,
     wallet,
   }) {
     const client = new MangoClient();
-    const connection = new Connection(IDS.cluster_urls["mainnet-beta"]);
-    const programId = new PublicKey(IDS["mainnet-beta"].mango_program_id);
+    const connection = new Connection(IDS.cluster_urls['mainnet-beta']);
+    const programId = new PublicKey(IDS['mainnet-beta'].mango_program_id);
     const clusterIds = IDS[cluster];
     const dexProgramId = new PublicKey(clusterIds.dex_program_id);
     const mangoGroupIds = clusterIds.mango_groups[mangoGroupName];
@@ -210,7 +211,7 @@ export class MangoBorrowLending {
           Market.load(
             connection,
             pk,
-            { skipPreflight: true, commitment: "singleGossip" },
+            { skipPreflight: true, commitment: 'singleGossip' },
             dexProgramId,
           ),
         ),

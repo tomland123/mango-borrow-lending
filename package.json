@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "Collaterized lending ",
   "main": "index.ts",
+  "source": "src/index.js",
+  "engines": {
+    "node": ">=10"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -17,13 +21,12 @@
   ],
   "dependencies": {
     "@blockworks-foundation/mango-client": "https://github.com/blockworks-foundation/mango-client-ts.git",
-    "@solana/web3.js": "^1.19.0",
+    "@solana/web3.js": "^1.18.0",
     "bn.js": "^5.2.0",
     "bs58": "^4.0.1",
     "buffer": "^6.0.3",
     "buffer-layout": "^1.2.1"
   },
-
   "devDependencies": {
     "@types/bn.js": "^4.11.6",
     "@types/chai": "^4.2.17",

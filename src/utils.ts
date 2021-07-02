@@ -18,6 +18,7 @@ import {
   TransactionInstruction,
   TransactionSignature,
   SYSVAR_RENT_PUBKEY,
+  LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import {
@@ -42,7 +43,6 @@ import {
   sleep,
 } from "@blockworks-foundation/mango-client";
 import * as bs58 from "bs58";
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 
 const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID: PublicKey = new PublicKey(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",

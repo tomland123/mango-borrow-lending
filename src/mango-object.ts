@@ -11,7 +11,7 @@ import { formatTokenMints, getOwnedSplTokenAccounts } from "./utils";
 
 import { WRAPPED_SOL_MINT } from "@project-serum/serum/lib/token-instructions";
 
-class MangoBorrowLending {
+export class MangoBorrowLending {
   constructor(
     client,
     cluster,
@@ -275,5 +275,3 @@ class MangoBorrowLending {
     );
   }
 }
-
-export default MangoBorrowLending;

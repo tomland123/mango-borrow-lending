@@ -5,9 +5,9 @@ import {
   initializeAccount,
   SRM_DECIMALS,
   WRAPPED_SOL_MINT,
-} from "@project-serum/serum/lib/token-instructions";
-import { TokenInstructions, TOKEN_MINTS } from "@project-serum/serum";
-import BN from "bn.js";
+} from '@project-serum/serum/lib/token-instructions';
+import { TokenInstructions, TOKEN_MINTS } from '@project-serum/serum';
+import BN from 'bn.js';
 import {
   Account,
   Connection,
@@ -19,20 +19,20 @@ import {
   TransactionSignature,
   SYSVAR_RENT_PUBKEY,
   LAMPORTS_PER_SOL,
-} from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+} from '@solana/web3.js';
+import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import {
   encodeMangoInstruction,
   NUM_MARKETS,
   NUM_TOKENS,
-} from "@blockworks-foundation/mango-client/lib/layout";
+} from '@blockworks-foundation/mango-client/lib/layout';
 import {
   makeBorrowInstruction,
   makeSettleBorrowInstruction,
   makeSettleFundsInstruction,
   makeWithdrawInstruction,
-} from "@blockworks-foundation/mango-client/lib/instruction";
-
+} from '@blockworks-foundation/mango-client/lib/instruction';
+import { Market } from '@project-serum/serum';
 import {
   MangoGroup,
   MangoSrmAccountLayout,
@@ -41,11 +41,11 @@ import {
   ACCOUNT_LAYOUT,
   uiToNative,
   sleep,
-} from "@blockworks-foundation/mango-client";
-import * as bs58 from "bs58";
+} from '@blockworks-foundation/mango-client';
+import * as bs58 from 'bs58';
 
 const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID: PublicKey = new PublicKey(
-  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+  'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
 );
 
 export const formatTokenMints = (symbols: { [name: string]: string }) => {
@@ -61,7 +61,7 @@ export function getOwnedAccountsFilters(publicKey: PublicKey) {
   return [
     {
       memcmp: {
-        offset: ACCOUNT_LAYOUT.offsetOf("owner"),
+        offset: ACCOUNT_LAYOUT.offsetOf('owner'),
         bytes: publicKey.toBase58(),
       },
     },
@@ -90,7 +90,7 @@ export async function getOwnedSplTokenAccounts(
 ): Promise<any[]> {
   const filters = getOwnedAccountsFilters(publicKey);
   // @ts-ignore
-  const resp = await connection._rpcRequest("getProgramAccounts", [
+  const resp = await connection._rpcRequest('getProgramAccounts', [
     TokenInstructions.TOKEN_PROGRAM_ID.toBase58(),
     {
       commitment: connection.commitment,
@@ -99,9 +99,9 @@ export async function getOwnedSplTokenAccounts(
   ]);
   if (resp.error) {
     throw new Error(
-      "failed to get token accounts owned by " +
+      'failed to get token accounts owned by ' +
         publicKey.toBase58() +
-        ": " +
+        ': ' +
         resp.error.message,
     );
   }
@@ -141,10 +141,10 @@ export async function getWalletTokenInfo(
 export const getSymbolForTokenMintAddress = (address: string): string => {
   if (address && address.length) {
     return (
-      TOKEN_MINTS.find((m) => m.address.toString() === address)?.name || ""
+      TOKEN_MINTS.find((m) => m.address.toString() === address)?.name || ''
     );
   } else {
-    return "";
+    return '';
   }
 };
 export async function createAccountInstruction(
@@ -173,7 +173,7 @@ export async function initMarginAccountAndDeposit(
   connection: Connection,
   programId: PublicKey,
   mangoGroup: MangoGroup,
-  wallet: Wallet,
+  wallet: any,
   token: PublicKey,
   tokenAcc: PublicKey,
   quantity: number,
@@ -212,7 +212,7 @@ export async function initMarginAccountAndDeposit(
     new PublicKey(programId),
   );
 
-  console.log(accInstr, "account instr!!");
+  console.log(accInstr, 'account instr!!');
 
   // Specify the accounts this instruction takes in (see program/src/instruction.rs)
   const keys = [
@@ -280,7 +280,7 @@ export async function initMarginAccountAndDeposit(
 
   // Specify signers in addition to the wallet
   signers.push(accInstr.account);
-  const functionName = "InitMarginAccount";
+  const functionName = 'InitMarginAccount';
   const sendingMessage = `Sending ${functionName} instruction...`;
   const successMessage = `${functionName} instruction success`;
 
@@ -369,7 +369,7 @@ export async function withdraw(
   programId: PublicKey,
   mangoGroup: MangoGroup,
   marginAccount: MarginAccount,
-  wallet: Wallet,
+  wallet: any,
   token: PublicKey,
   quantity: number,
 ): Promise<TransactionSignature> {
@@ -384,7 +384,7 @@ export async function withdraw(
     const space = 165;
     const lamports = await connection.getMinimumBalanceForRentExemption(
       space,
-      "singleGossip",
+      'singleGossip',
     );
     transaction.add(
       SystemProgram.createAccount({
@@ -404,7 +404,7 @@ export async function withdraw(
     );
     signers.push(wrappedSolAccount);
   } else {
-    const tokenAccExists = await connection.getAccountInfo(tokenAcc, "recent");
+    const tokenAccExists = await connection.getAccountInfo(tokenAcc, 'recent');
     if (!tokenAccExists) {
       transaction.add(
         await createAssociatedTokenAccount(
@@ -466,7 +466,7 @@ export async function withdraw(
     );
   }
 
-  const functionName = "Withdraw";
+  const functionName = 'Withdraw';
   const sendingMessage = `Sending ${functionName} instruction...`;
   const successMessage = `${functionName} instruction success`;
   return await sendTransaction({
@@ -484,7 +484,7 @@ export async function borrowAndWithdraw(
   programId: PublicKey,
   mangoGroup: MangoGroup,
   marginAccount: MarginAccount,
-  wallet: Wallet,
+  wallet: any,
   token: PublicKey,
   withdrawQuantity: number,
 ): Promise<TransactionSignature> {
@@ -499,7 +499,7 @@ export async function borrowAndWithdraw(
     const space = 165;
     const lamports = await connection.getMinimumBalanceForRentExemption(
       space,
-      "singleGossip",
+      'singleGossip',
     );
     transaction.add(
       SystemProgram.createAccount({
@@ -519,7 +519,7 @@ export async function borrowAndWithdraw(
     );
     signers.push(wrappedSolAccount);
   } else {
-    const tokenAccExists = await connection.getAccountInfo(tokenAcc, "recent");
+    const tokenAccExists = await connection.getAccountInfo(tokenAcc, 'recent');
     if (!tokenAccExists) {
       transaction.add(
         await createAssociatedTokenAccount(
@@ -610,7 +610,7 @@ export async function borrow(
   programId: PublicKey,
   mangoGroup: MangoGroup,
   marginAccount: MarginAccount,
-  wallet: Wallet,
+  wallet: any,
   token: PublicKey,
 
   quantity: number,
@@ -646,7 +646,7 @@ export async function borrow(
   const transaction = new Transaction();
   transaction.add(instruction);
   const signers = [];
-  const functionName = "Borrow";
+  const functionName = 'Borrow';
   const sendingMessage = `Sending ${functionName} instruction...`;
   const successMessage = `${functionName} instruction success`;
   return await sendTransaction({
@@ -664,7 +664,7 @@ export async function settleBorrow(
   programId: PublicKey,
   mangoGroup: MangoGroup,
   marginAccount: MarginAccount,
-  wallet: Wallet,
+  wallet: any,
 
   token: PublicKey,
   quantity: number,
@@ -692,7 +692,7 @@ export async function settleBorrow(
     connection,
     wallet,
     [],
-    "SettleBorrow",
+    'SettleBorrow',
   );
 }
 
@@ -702,7 +702,7 @@ export async function settleAllBorrows(
   programId: PublicKey,
   mangoGroup: MangoGroup,
   marginAccount: MarginAccount,
-  wallet: Wallet,
+  wallet: any,
 
   token: Array<PublicKey>,
   quantity: Array<number>,
@@ -734,7 +734,7 @@ export async function settleAllBorrows(
 
     transaction.add(instruction);
   });
-  const functionName = "SettleBorrows";
+  const functionName = 'SettleBorrows';
   const sendingMessage = `Sending ${functionName} instruction...`;
   const successMessage = `${functionName} instruction success`;
 
@@ -755,7 +755,7 @@ export async function depositSrm(
   connection: Connection,
   programId: PublicKey,
   mangoGroup: MangoGroup,
-  wallet: Wallet,
+  wallet: any,
   srmAccount: PublicKey,
   quantity: number,
 
@@ -799,7 +799,7 @@ export async function depositSrm(
     connection,
     wallet,
     additionalSigners,
-    "Deposit SRM",
+    'Deposit SRM',
   );
   return mangoSrmAccount;
 }
@@ -808,8 +808,8 @@ export async function withdrawSrm(
   connection: Connection,
   programId: PublicKey,
   mangoGroup: MangoGroup,
-  mangoSrmAccount: MangoSrmAccount,
-  wallet: Wallet,
+  mangoSrmAccount: any,
+  wallet: any,
   srmAccount: PublicKey,
 
   quantity: number,
@@ -838,7 +838,7 @@ export async function withdrawSrm(
     connection,
     wallet,
     [],
-    "WithdrawSrm",
+    'WithdrawSrm',
   );
 }
 
@@ -848,15 +848,15 @@ export async function placeAndSettle(
   mangoGroup: MangoGroup,
   marginAccount: MarginAccount,
   spotMarket: Market,
-  wallet: Wallet,
+  wallet: any,
 
-  side: "buy" | "sell",
+  side: 'buy' | 'sell',
   price: number,
   size: number,
-  orderType?: "limit" | "ioc" | "postOnly",
+  orderType?: 'limit' | 'ioc' | 'postOnly',
   clientId?: BN,
 ): Promise<TransactionSignature> {
-  orderType = orderType == undefined ? "limit" : orderType;
+  orderType = orderType == undefined ? 'limit' : orderType;
   // orderType = orderType ?? 'limit'
   const limitPrice = spotMarket.priceNumberToLots(price);
   const maxBaseQuantity = spotMarket.baseSizeNumberToLots(size);
@@ -869,7 +869,7 @@ export async function placeAndSettle(
   const maxQuoteQuantity = new BN(
     maxBaseQuantity
       .mul(limitPrice)
-      .mul(spotMarket["_decoded"].quoteLotSize)
+      .mul(spotMarket['_decoded'].quoteLotSize)
       .toNumber() *
       (1 + rates.taker),
   );
@@ -877,12 +877,12 @@ export async function placeAndSettle(
   console.log(maxBaseQuantity.toString(), maxQuoteQuantity.toString());
 
   if (maxBaseQuantity.lte(new BN(0))) {
-    throw new Error("size too small");
+    throw new Error('size too small');
   }
   if (limitPrice.lte(new BN(0))) {
-    throw new Error("invalid price");
+    throw new Error('invalid price');
   }
-  const selfTradeBehavior = "decrementTake";
+  const selfTradeBehavior = 'decrementTake';
   const marketIndex = mangoGroup.getMarketIndex(spotMarket);
   // const vaultIndex = side === 'buy' ? mangoGroup.vaults.length - 1 : marketIndex
 
@@ -895,7 +895,7 @@ export async function placeAndSettle(
   const dexSigner = await PublicKey.createProgramAddress(
     [
       spotMarket.publicKey.toBuffer(),
-      spotMarket["_decoded"].vaultSignerNonce.toArrayLike(Buffer, "le", 8),
+      spotMarket['_decoded'].vaultSignerNonce.toArrayLike(Buffer, 'le', 8),
     ],
     spotMarket.programId,
   );
@@ -914,7 +914,7 @@ export async function placeAndSettle(
       const openOrdersLamports =
         await connection.getMinimumBalanceForRentExemption(
           openOrdersSpace,
-          "singleGossip",
+          'singleGossip',
         );
       const accInstr = await createAccountInstruction(
         connection,
@@ -943,8 +943,8 @@ export async function placeAndSettle(
       spotMarket.publicKey,
       openOrdersKeys[marketIndex],
       mangoGroup.signerKey,
-      spotMarket["_decoded"].baseVault,
-      spotMarket["_decoded"].quoteVault,
+      spotMarket['_decoded'].baseVault,
+      spotMarket['_decoded'].quoteVault,
       mangoGroup.vaults[marketIndex],
       mangoGroup.vaults[NUM_TOKENS - 1],
       dexSigner,
@@ -962,15 +962,15 @@ export async function placeAndSettle(
     {
       isSigner: false,
       isWritable: true,
-      pubkey: spotMarket["_decoded"].requestQueue,
+      pubkey: spotMarket['_decoded'].requestQueue,
     },
     {
       isSigner: false,
       isWritable: true,
-      pubkey: spotMarket["_decoded"].eventQueue,
+      pubkey: spotMarket['_decoded'].eventQueue,
     },
-    { isSigner: false, isWritable: true, pubkey: spotMarket["_decoded"].bids },
-    { isSigner: false, isWritable: true, pubkey: spotMarket["_decoded"].asks },
+    { isSigner: false, isWritable: true, pubkey: spotMarket['_decoded'].bids },
+    { isSigner: false, isWritable: true, pubkey: spotMarket['_decoded'].asks },
     {
       isSigner: false,
       isWritable: true,
@@ -985,12 +985,12 @@ export async function placeAndSettle(
     {
       isSigner: false,
       isWritable: true,
-      pubkey: spotMarket["_decoded"].baseVault,
+      pubkey: spotMarket['_decoded'].baseVault,
     },
     {
       isSigner: false,
       isWritable: true,
-      pubkey: spotMarket["_decoded"].quoteVault,
+      pubkey: spotMarket['_decoded'].quoteVault,
     },
     { isSigner: false, isWritable: false, pubkey: TOKEN_PROGRAM_ID },
     { isSigner: false, isWritable: false, pubkey: SYSVAR_RENT_PUBKEY },
@@ -1043,7 +1043,7 @@ export async function placeAndSettle(
     connection,
     wallet,
     signers,
-    "place order and settle",
+    'place order and settle',
   );
 }
 
@@ -1052,7 +1052,7 @@ export async function settleFundsAndBorrows(
   programId: PublicKey,
   mangoGroup: MangoGroup,
   marginAccount: MarginAccount,
-  wallet: Wallet,
+  wallet: any,
   spotMarket: Market,
 ): Promise<TransactionSignature> {
   const transaction = new Transaction();
@@ -1060,7 +1060,7 @@ export async function settleFundsAndBorrows(
   const dexSigner = await PublicKey.createProgramAddress(
     [
       spotMarket.publicKey.toBuffer(),
-      spotMarket["_decoded"].vaultSignerNonce.toArrayLike(Buffer, "le", 8),
+      spotMarket['_decoded'].vaultSignerNonce.toArrayLike(Buffer, 'le', 8),
     ],
     spotMarket.programId,
   );
@@ -1073,8 +1073,8 @@ export async function settleFundsAndBorrows(
     spotMarket.publicKey,
     marginAccount.openOrders[marketIndex],
     mangoGroup.signerKey,
-    spotMarket["_decoded"].baseVault,
-    spotMarket["_decoded"].quoteVault,
+    spotMarket['_decoded'].baseVault,
+    spotMarket['_decoded'].quoteVault,
     mangoGroup.vaults[marketIndex],
     mangoGroup.vaults[mangoGroup.vaults.length - 1],
     dexSigner,
@@ -1104,7 +1104,7 @@ export async function settleFundsAndBorrows(
     connection,
     wallet,
     signers,
-    "Settle Funds",
+    'Settle Funds',
   );
 }
 
@@ -1113,14 +1113,14 @@ export async function settleFunds(
   programId: PublicKey,
   mangoGroup: MangoGroup,
   marginAccount: MarginAccount,
-  wallet: Wallet,
+  wallet: any,
   spotMarket: Market,
 ): Promise<TransactionSignature> {
   const marketIndex = mangoGroup.getMarketIndex(spotMarket);
   const dexSigner = await PublicKey.createProgramAddress(
     [
       spotMarket.publicKey.toBuffer(),
-      spotMarket["_decoded"].vaultSignerNonce.toArrayLike(Buffer, "le", 8),
+      spotMarket['_decoded'].vaultSignerNonce.toArrayLike(Buffer, 'le', 8),
     ],
     spotMarket.programId,
   );
@@ -1141,12 +1141,12 @@ export async function settleFunds(
     {
       isSigner: false,
       isWritable: true,
-      pubkey: spotMarket["_decoded"].baseVault,
+      pubkey: spotMarket['_decoded'].baseVault,
     },
     {
       isSigner: false,
       isWritable: true,
-      pubkey: spotMarket["_decoded"].quoteVault,
+      pubkey: spotMarket['_decoded'].quoteVault,
     },
     {
       isSigner: false,
@@ -1170,7 +1170,7 @@ export async function settleFunds(
   transaction.add(instruction);
 
   const signers = [];
-  const functionName = "SettleFunds";
+  const functionName = 'SettleFunds';
   const sendingMessage = `Sending ${functionName} instruction...`;
   const successMessage = `${functionName} instruction success`;
   return await sendTransaction({
@@ -1188,9 +1188,9 @@ export async function cancelOrderAndSettle(
   programId: PublicKey,
   mangoGroup: MangoGroup,
   marginAccount: MarginAccount,
-  wallet: Wallet,
+  wallet: any,
   spotMarket: Market,
-  order: Order,
+  order: any,
 ): Promise<TransactionSignature> {
   const keys = [
     { isSigner: false, isWritable: true, pubkey: mangoGroup.publicKey },
@@ -1199,14 +1199,14 @@ export async function cancelOrderAndSettle(
     { isSigner: false, isWritable: false, pubkey: SYSVAR_CLOCK_PUBKEY },
     { isSigner: false, isWritable: false, pubkey: mangoGroup.dexProgramId },
     { isSigner: false, isWritable: true, pubkey: spotMarket.publicKey },
-    { isSigner: false, isWritable: true, pubkey: spotMarket["_decoded"].bids },
-    { isSigner: false, isWritable: true, pubkey: spotMarket["_decoded"].asks },
+    { isSigner: false, isWritable: true, pubkey: spotMarket['_decoded'].bids },
+    { isSigner: false, isWritable: true, pubkey: spotMarket['_decoded'].asks },
     { isSigner: false, isWritable: true, pubkey: order.openOrdersAddress },
     { isSigner: false, isWritable: false, pubkey: mangoGroup.signerKey },
     {
       isSigner: false,
       isWritable: true,
-      pubkey: spotMarket["_decoded"].eventQueue,
+      pubkey: spotMarket['_decoded'].eventQueue,
     },
   ];
 
@@ -1226,7 +1226,7 @@ export async function cancelOrderAndSettle(
   const dexSigner = await PublicKey.createProgramAddress(
     [
       spotMarket.publicKey.toBuffer(),
-      spotMarket["_decoded"].vaultSignerNonce.toArrayLike(Buffer, "le", 8),
+      spotMarket['_decoded'].vaultSignerNonce.toArrayLike(Buffer, 'le', 8),
     ],
     spotMarket.programId,
   );
@@ -1239,8 +1239,8 @@ export async function cancelOrderAndSettle(
     spotMarket.publicKey,
     marginAccount.openOrders[marketIndex],
     mangoGroup.signerKey,
-    spotMarket["_decoded"].baseVault,
-    spotMarket["_decoded"].quoteVault,
+    spotMarket['_decoded'].baseVault,
+    spotMarket['_decoded'].quoteVault,
     mangoGroup.vaults[marketIndex],
     mangoGroup.vaults[mangoGroup.vaults.length - 1],
     dexSigner,
@@ -1295,7 +1295,7 @@ export async function cancelOrderAndSettle(
     connection,
     wallet,
     [],
-    "CancelOrder",
+    'CancelOrder',
   );
 }
 
@@ -1305,7 +1305,7 @@ export async function settleAll(
   mangoGroup: MangoGroup,
   marginAccount: MarginAccount,
   markets: Market[],
-  wallet: Wallet,
+  wallet: any,
 ): Promise<TransactionSignature> {
   const transaction = new Transaction();
 
@@ -1317,7 +1317,7 @@ export async function settleAll(
       continue;
     } else if (
       openOrdersAccount.quoteTokenFree.toNumber() +
-        openOrdersAccount["referrerRebatesAccrued"].toNumber() ===
+        openOrdersAccount['referrerRebatesAccrued'].toNumber() ===
         0 &&
       openOrdersAccount.baseTokenFree.toNumber() === 0
     ) {
@@ -1327,13 +1327,13 @@ export async function settleAll(
     assetGains[i] += openOrdersAccount.baseTokenFree.toNumber();
     assetGains[NUM_TOKENS - 1] +=
       openOrdersAccount.quoteTokenFree.toNumber() +
-      openOrdersAccount["referrerRebatesAccrued"].toNumber();
+      openOrdersAccount['referrerRebatesAccrued'].toNumber();
 
     const spotMarket = markets[i];
     const dexSigner = await PublicKey.createProgramAddress(
       [
         spotMarket.publicKey.toBuffer(),
-        spotMarket["_decoded"].vaultSignerNonce.toArrayLike(Buffer, "le", 8),
+        spotMarket['_decoded'].vaultSignerNonce.toArrayLike(Buffer, 'le', 8),
       ],
       spotMarket.programId,
     );
@@ -1354,12 +1354,12 @@ export async function settleAll(
       {
         isSigner: false,
         isWritable: true,
-        pubkey: spotMarket["_decoded"].baseVault,
+        pubkey: spotMarket['_decoded'].baseVault,
       },
       {
         isSigner: false,
         isWritable: true,
-        pubkey: spotMarket["_decoded"].quoteVault,
+        pubkey: spotMarket['_decoded'].quoteVault,
       },
       { isSigner: false, isWritable: true, pubkey: mangoGroup.vaults[i] },
       {
@@ -1413,7 +1413,7 @@ export async function settleAll(
   }
 
   if (transaction.instructions.length === 0) {
-    throw new Error("No unsettled funds");
+    throw new Error('No unsettled funds');
   }
 
   return await packageAndSend(
@@ -1421,14 +1421,14 @@ export async function settleAll(
     connection,
     wallet,
     [],
-    "Settle All",
+    'Settle All',
   );
 }
 
 async function packageAndSend(
   transaction: Transaction,
   connection: Connection,
-  wallet: Wallet,
+  wallet: any,
   signers: Account[],
   functionName: string,
 ): Promise<TransactionSignature> {
@@ -1450,7 +1450,7 @@ export async function settleAllTrades(
   mangoGroup: MangoGroup,
   marginAccount: MarginAccount,
   markets: Market[],
-  wallet: Wallet,
+  wallet: any,
 ): Promise<TransactionSignature> {
   const transaction = new Transaction();
 
@@ -1474,7 +1474,7 @@ export async function settleAllTrades(
     const dexSigner = await PublicKey.createProgramAddress(
       [
         spotMarket.publicKey.toBuffer(),
-        spotMarket["_decoded"].vaultSignerNonce.toArrayLike(Buffer, "le", 8),
+        spotMarket['_decoded'].vaultSignerNonce.toArrayLike(Buffer, 'le', 8),
       ],
       spotMarket.programId,
     );
@@ -1495,12 +1495,12 @@ export async function settleAllTrades(
       {
         isSigner: false,
         isWritable: true,
-        pubkey: spotMarket["_decoded"].baseVault,
+        pubkey: spotMarket['_decoded'].baseVault,
       },
       {
         isSigner: false,
         isWritable: true,
-        pubkey: spotMarket["_decoded"].quoteVault,
+        pubkey: spotMarket['_decoded'].quoteVault,
       },
       { isSigner: false, isWritable: true, pubkey: mangoGroup.vaults[i] },
       {
@@ -1522,7 +1522,7 @@ export async function settleAllTrades(
   }
 
   if (transaction.instructions.length === 0) {
-    throw new Error("No unsettled funds");
+    throw new Error('No unsettled funds');
   }
 
   return await packageAndSend(
@@ -1530,7 +1530,7 @@ export async function settleAllTrades(
     connection,
     wallet,
     [],
-    "Settle All Trades",
+    'Settle All Trades',
   );
 }
 
@@ -1545,12 +1545,12 @@ export async function sendTransaction({
   wallet,
   signers = [],
   connection,
-  sendingMessage = "Sending transaction...",
-  successMessage = "Transaction confirmed",
+  sendingMessage = 'Sending transaction...',
+  successMessage = 'Transaction confirmed',
   timeout = DEFAULT_TIMEOUT,
 }: {
   transaction: Transaction;
-  wallet: Wallet;
+  wallet: any;
   signers?: Array<Account>;
   connection: Connection;
   sendingMessage?: string;
@@ -1579,12 +1579,12 @@ export async function signTransaction({
   connection,
 }: {
   transaction: Transaction;
-  wallet: Wallet;
+  wallet: any;
   signers?: Array<Account>;
   connection: Connection;
 }) {
   transaction.recentBlockhash = (
-    await connection.getRecentBlockhash("max")
+    await connection.getRecentBlockhash('max')
   ).blockhash;
   transaction.setSigners(wallet.publicKey, ...signers.map((s) => s.publicKey));
   if (signers.length > 0) {
@@ -1602,10 +1602,10 @@ export async function signTransactions({
     transaction: Transaction;
     signers?: Array<Account>;
   }[];
-  wallet: Wallet;
+  wallet: any;
   connection: Connection;
 }) {
-  const blockhash = (await connection.getRecentBlockhash("max")).blockhash;
+  const blockhash = (await connection.getRecentBlockhash('max')).blockhash;
   transactionsAndSigners.forEach(({ transaction, signers = [] }) => {
     transaction.recentBlockhash = blockhash;
     transaction.setSigners(
@@ -1624,8 +1624,8 @@ export async function signTransactions({
 export async function sendSignedTransaction({
   signedTransaction,
   connection,
-  sendingMessage = "Sending transaction...",
-  successMessage = "Transaction confirmed",
+  sendingMessage = 'Sending transaction...',
+  successMessage = 'Transaction confirmed',
   timeout = DEFAULT_TIMEOUT,
 }: {
   signedTransaction: Transaction;
@@ -1643,7 +1643,7 @@ export async function sendSignedTransaction({
     },
   );
 
-  console.log("Started awaiting confirmation for", txid);
+  console.log('Started awaiting confirmation for', txid);
 
   let done = false;
   (async () => {
@@ -1658,23 +1658,23 @@ export async function sendSignedTransaction({
     await awaitTransactionSignatureConfirmation(txid, timeout, connection);
   } catch (err) {
     if (err.timeout) {
-      throw new Error("Timed out awaiting confirmation on transaction");
+      throw new Error('Timed out awaiting confirmation on transaction');
     }
     let simulateResult: SimulatedTransactionResponse | null = null;
     try {
       simulateResult = (
-        await simulateTransaction(connection, signedTransaction, "single")
+        await simulateTransaction(connection, signedTransaction, 'single')
       ).value;
     } catch (e) {
-      console.log("Error: ", e);
+      console.log('Error: ', e);
     }
     if (simulateResult && simulateResult.err) {
       if (simulateResult.logs) {
         for (let i = simulateResult.logs.length - 1; i >= 0; --i) {
           const line = simulateResult.logs[i];
-          if (line.startsWith("Program log: ")) {
+          if (line.startsWith('Program log: ')) {
             throw new TransactionError(
-              "Transaction failed: " + line.slice("Program log: ".length),
+              'Transaction failed: ' + line.slice('Program log: '.length),
               txid,
             );
           }
@@ -1682,12 +1682,12 @@ export async function sendSignedTransaction({
       }
       throw new TransactionError(JSON.stringify(simulateResult.err), txid);
     }
-    throw new TransactionError("Transaction failed", txid);
+    throw new TransactionError('Transaction failed', txid);
   } finally {
     done = true;
   }
 
-  console.log("Latency", txid, getUnixTs() - startTime);
+  console.log('Latency', txid, getUnixTs() - startTime);
   return txid;
 }
 
@@ -1705,14 +1705,14 @@ async function awaitTransactionSignatureConfirmation(
           return;
         }
         done = true;
-        console.log("Timed out for txid", txid);
+        console.log('Timed out for txid', txid);
         reject({ timeout: true });
       }, timeout);
       try {
         connection.onSignature(
           txid,
           (result) => {
-            console.log("WS confirmed", txid, result);
+            console.log('WS confirmed', txid, result);
             done = true;
             if (result.err) {
               reject(result.err);
@@ -1722,10 +1722,10 @@ async function awaitTransactionSignatureConfirmation(
           },
           connection.commitment,
         );
-        console.log("Set up WS connection", txid);
+        console.log('Set up WS connection', txid);
       } catch (e) {
         done = true;
-        console.log("WS error in setup", txid, e);
+        console.log('WS error in setup', txid, e);
       }
       while (!done) {
         // eslint-disable-next-line
@@ -1739,7 +1739,7 @@ async function awaitTransactionSignatureConfirmation(
               if (!result) {
                 // console.log('REST null result for', txid, result);
               } else if (result.err) {
-                console.log("REST error for", txid, result);
+                console.log('REST error for', txid, result);
                 done = true;
                 reject(result.err);
               }
@@ -1747,20 +1747,20 @@ async function awaitTransactionSignatureConfirmation(
               else if (
                 !(
                   result.confirmations ||
-                  result.confirmationStatus === "confirmed" ||
-                  result.confirmationStatus === "finalized"
+                  result.confirmationStatus === 'confirmed' ||
+                  result.confirmationStatus === 'finalized'
                 )
               ) {
-                console.log("REST not confirmed", txid, result);
+                console.log('REST not confirmed', txid, result);
               } else {
-                console.log("REST confirmed", txid, result);
+                console.log('REST confirmed', txid, result);
                 done = true;
                 resolve(result);
               }
             }
           } catch (e) {
             if (!done) {
-              console.log("REST connection error: txid", txid, e);
+              console.log('REST connection error: txid', txid, e);
             }
           }
         })();

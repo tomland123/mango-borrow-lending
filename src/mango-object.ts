@@ -74,8 +74,8 @@ export class MangoBorrowLending {
     this.ownerMarginAccounts = modifiedOwnerMarginAccounts;
   }
 
-  async settle({ symbolPublicKey, borrowQuantity }) {
-    const { connection, programId, mangoGroup, marginAccount, wallet } = this;
+  async settle({ symbolPublicKey, marginAccount, settleQuantity }) {
+    const { connection, programId, mangoGroup, wallet } = this;
     await settleBorrow(
       connection,
       programId,
@@ -83,12 +83,12 @@ export class MangoBorrowLending {
       marginAccount,
       wallet,
       symbolPublicKey,
-      borrowQuantity,
+      settleQuantity,
     );
     this.getBalances();
   }
-  async borrow({ marginAccount, wallet, token, withdrawQuantity }) {
-    const { connection, programId, mangoGroup } = this;
+  async borrow({ marginAccount, token, withdrawQuantity }) {
+    const { connection, programId, wallet, mangoGroup } = this;
 
     await borrowAndWithdraw(
       connection,

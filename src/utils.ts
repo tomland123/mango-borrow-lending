@@ -1,5 +1,5 @@
 // @ts-nocheck
-
+import axios from 'axios';
 import {
   closeAccount,
   initializeAccount,
@@ -33,6 +33,9 @@ import {
   makeWithdrawInstruction,
 } from '@blockworks-foundation/mango-client/lib/instruction';
 import { Market } from '@project-serum/serum';
+
+import { _MARKET_STATE_LAYOUT_V2 } from '@project-serum/serum/lib/market';
+
 import {
   MangoGroup,
   MangoSrmAccountLayout,
@@ -43,6 +46,7 @@ import {
   sleep,
 } from '@blockworks-foundation/mango-client';
 import * as bs58 from 'bs58';
+import { floorToDecimal, tokenPrecision } from './variables';
 
 const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID: PublicKey = new PublicKey(
   'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
@@ -1771,3 +1775,48 @@ async function awaitTransactionSignatureConfirmation(
   done = true;
   return result;
 }
+
+export const getTokenBalances = ({ item, symbols, mangoGroup }) =>
+  Object.entries(symbols).map(([name], i) => {
+    return {
+      symbol: name,
+      balance: floorToDecimal(
+        item.getUiDeposit(mangoGroup, i),
+        tokenPrecision[name],
+      ),
+    };
+  });
+
+export const loadSerumMarkets = async ({
+  accounts,
+  url,
+  serumMarket,
+  options = {},
+  quoteMintDecimals = 6,
+  baseMintDecimals = 6,
+}) => {
+  console.log(accounts);
+  const { data: accountsData } = await axios.post(url, {
+    jsonrpc: '2.0',
+    id: '1',
+    method: 'getMultipleAccounts',
+    params: [accounts],
+  });
+
+  const getAllMarkets = accountsData.result?.value.map((item) => {
+    const { data } = item;
+
+    const myBuffer = Buffer.from(data[0], data[1]);
+    const decoded = _MARKET_STATE_LAYOUT_V2.decode(myBuffer);
+
+    return new Market(
+      decoded,
+      baseMintDecimals,
+      quoteMintDecimals,
+      options,
+      serumMarket,
+    );
+  });
+
+  return getAllMarkets;
+};

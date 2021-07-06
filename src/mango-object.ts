@@ -1,8 +1,11 @@
+import { loadSerumMarkets } from './utils';
 // @ts-nocheck
 import {
   borrowAndWithdraw,
   getSymbolForTokenMintAddress,
+  getTokenBalances,
   initMarginAccountAndDeposit,
+  settleBorrow,
 } from './utils';
 import { MangoClient, IDS } from '@blockworks-foundation/mango-client';
 import { Market } from '@project-serum/serum';
@@ -10,7 +13,6 @@ import { PublicKey, Connection } from '@solana/web3.js';
 import { formatTokenMints, getOwnedSplTokenAccounts } from './utils';
 
 import { WRAPPED_SOL_MINT } from '@project-serum/serum/lib/token-instructions';
-import { floorToDecimal, tokenPrecision } from './variables';
 
 export class MangoBorrowLending {
   constructor(
@@ -45,13 +47,45 @@ export class MangoBorrowLending {
     this.ownerMarginAccounts = ownerMarginAccounts;
     this.prices = undefined;
     this.srmAccountInfo = undefined;
+    this.mangoTokenInfo = undefined;
   }
 
-  getBalances() {
-    console.log('todo!');
+  async getBalances() {
+    const { mangoGroup, symbols, client } = this;
+    const ownerMarginAccounts = await client?.getMarginAccountsForOwner(
+      connection,
+      new PublicKey(programId),
+      mangoGroupToUse,
+      wallet,
+    );
+
+    const modifiedOwnerMarginAccounts = ownerMarginAccounts.map((item) => {
+      const balances = getTokenBalances({
+        item,
+        symbols,
+        mangoGroup,
+      });
+      item.balances = balances;
+      return item;
+    });
+
+    this.ownerMarginAccounts = modifiedOwnerMarginAccounts;
   }
+
   //https://github.com/blockworks-foundation/mango-ui-v2/blob/cfc09fb3c4a3f0abf1da50ac53ae5ec5a4b97251/utils/mango.tsx#L651
-  async settleBorrow() {}
+  async settleBorrow({ symbolPublicKey, borrowQuantity }) {
+    const { connection, programId, mangoGroup, marginAccount, wallet } = this;
+    await settleBorrow(
+      connection,
+      programId,
+      mangoGroup,
+      marginAccount,
+      wallet,
+      symbolPublicKey,
+      borrowQuantity,
+    );
+    this.getBalances();
+  }
   async borrow({ marginAccount, wallet, token, withdrawQuantity }) {
     const { connection, programId, mangoGroup } = this;
 
@@ -64,7 +98,7 @@ export class MangoBorrowLending {
       token,
       withdrawQuantity,
     );
-    console.log(getBorrowData);
+    this.getBalances();
   }
   async settleAllBorrows() {}
 
@@ -76,7 +110,6 @@ export class MangoBorrowLending {
       this.wallet,
     );
     this.ownerMarginAccounts = ownerMarginAccounts;
-    console.log(this);
   }
 
   async getTokensInWallet() {
@@ -109,7 +142,8 @@ export class MangoBorrowLending {
       (sym) => !symbolsForAccounts.includes(sym),
     );
 
-    console.log(activeWallets, missingTokens, '???');
+    this.mangoTokenInfo = { activeWallets, missingTokens };
+
     return { activeWallets, missingTokens };
   }
   async initAccountAndDeposit({ tokenDetail, quantity }) {
@@ -217,7 +251,16 @@ export class MangoBorrowLending {
         ),
       );
     }
+    const serumMarketId = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
+    const serumMarket = new PublicKey(serumMarketId);
 
+    await loadSerumMarkets({
+      url: IDS.cluster_urls['mainnet-beta'],
+      accounts: mangoGroupToUse.spotMarkets.map((item) => item.toBase58()),
+      serumMarket,
+    });
+
+    console.log(serumMarket, 'serumMarket', marketsToUse);
     const mangoGroupTokenMappings = new Map<TokenSymbol, PublicKey>();
     const mangoGroupSymbols: [string, string][] = Object.entries(
       mangoGroupIds.symbols,
@@ -234,26 +277,22 @@ export class MangoBorrowLending {
     for (const [spotMarketSymbol, address] of mangoGroupSpotMarketSymbols) {
       mangoGroupSportMarketMappings[spotMarketSymbol] = new PublicKey(address);
     }
-    const getTokenBalances = (item) =>
-      Object.entries(symbols).map(([name], i) => {
-        return {
-          symbol: name,
-          balance: floorToDecimal(
-            item.getUiDeposit(mangoGroupToUse, i),
-            tokenPrecision[name],
-          ),
-        };
-      });
 
     const ownerMarginAccounts = await client.getMarginAccountsForOwner(
       connection,
-      new PublicKey(programId),
+      programId,
       mangoGroupToUse,
       wallet,
     );
 
+    console.log(ownerMarginAccounts);
+
     const modifiedOwnerMarginAccounts = ownerMarginAccounts.map((item) => {
-      const balances = getTokenBalances(item);
+      const balances = getTokenBalances({
+        item,
+        symbols,
+        mangoGroup: mangoGroupToUse,
+      });
       item.balances = balances;
       return item;
     });

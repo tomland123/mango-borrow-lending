@@ -53,6 +53,14 @@ const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID: PublicKey = new PublicKey(
   'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
 );
 
+export class TransactionError extends Error {
+  public txid: string;
+  constructor(message: string, txid?: string) {
+    super(message);
+    this.txid = txid;
+  }
+}
+
 export const formatTokenMints = (symbols: { [name: string]: string }) => {
   return Object.entries(symbols).map(([name, address]) => {
     return {
@@ -178,7 +186,7 @@ export async function initMarginAccountAndDeposit(
   connection: Connection,
   programId: PublicKey,
   mangoGroup: MangoGroup,
-  wallet: any,
+  wallet: PublicKey,
   token: PublicKey,
   tokenAcc: PublicKey,
   quantity: number,
@@ -758,7 +766,7 @@ export async function deposit(
   programId: PublicKey,
   mangoGroup: MangoGroup,
   marginAccount: MarginAccount,
-  wallet: Wallet,
+  wallet: any,
   token: PublicKey,
   tokenAcc: PublicKey,
   quantity: number,

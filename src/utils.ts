@@ -753,6 +753,116 @@ export async function settleAllBorrows(
   });
 }
 
+export async function deposit(
+  connection: Connection,
+  programId: PublicKey,
+  mangoGroup: MangoGroup,
+  marginAccount: MarginAccount,
+  wallet: Wallet,
+  token: PublicKey,
+  tokenAcc: PublicKey,
+  quantity: number,
+): Promise<TransactionSignature> {
+  const transaction = new Transaction();
+  const signers = [];
+
+  let wrappedSolAccount: Account | null = null;
+  if (
+    token.equals(WRAPPED_SOL_MINT) &&
+    tokenAcc.toBase58() === wallet.publicKey.toBase58()
+  ) {
+    wrappedSolAccount = new Account();
+    const lamports = Math.round(quantity * LAMPORTS_PER_SOL) + 1e7;
+    transaction.add(
+      SystemProgram.createAccount({
+        fromPubkey: wallet.publicKey,
+        newAccountPubkey: wrappedSolAccount.publicKey,
+        lamports,
+        space: 165,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+    );
+
+    transaction.add(
+      initializeAccount({
+        account: wrappedSolAccount.publicKey,
+        mint: WRAPPED_SOL_MINT,
+        owner: wallet.publicKey,
+      }),
+    );
+
+    signers.push(wrappedSolAccount);
+  }
+  const tokenIndex = mangoGroup.getTokenIndex(token);
+  const nativeQuantity = uiToNative(
+    quantity,
+    mangoGroup.mintDecimals[tokenIndex],
+  );
+
+  const keys = [
+    { isSigner: false, isWritable: true, pubkey: mangoGroup.publicKey },
+    { isSigner: false, isWritable: true, pubkey: marginAccount.publicKey },
+    { isSigner: true, isWritable: false, pubkey: wallet.publicKey },
+    {
+      isSigner: false,
+      isWritable: true,
+      pubkey: wrappedSolAccount?.publicKey ?? tokenAcc,
+    },
+    {
+      isSigner: false,
+      isWritable: true,
+      pubkey: mangoGroup.vaults[tokenIndex],
+    },
+    { isSigner: false, isWritable: false, pubkey: TOKEN_PROGRAM_ID },
+    { isSigner: false, isWritable: false, pubkey: SYSVAR_CLOCK_PUBKEY },
+  ];
+  const data = encodeMangoInstruction({
+    Deposit: { quantity: nativeQuantity },
+  });
+
+  const instruction = new TransactionInstruction({ keys, data, programId });
+  transaction.add(instruction);
+
+  if (wrappedSolAccount) {
+    transaction.add(
+      closeAccount({
+        source: wrappedSolAccount.publicKey,
+        destination: wallet.publicKey,
+        owner: wallet.publicKey,
+      }),
+    );
+  }
+
+  // settle borrow
+  const settleKeys = [
+    { isSigner: false, isWritable: true, pubkey: mangoGroup.publicKey },
+    { isSigner: false, isWritable: true, pubkey: marginAccount.publicKey },
+    { isSigner: true, isWritable: false, pubkey: wallet.publicKey },
+    { isSigner: false, isWritable: false, pubkey: SYSVAR_CLOCK_PUBKEY },
+  ];
+  const setttleBorrowsData = encodeMangoInstruction({
+    SettleBorrow: { tokenIndex: new BN(tokenIndex), quantity: nativeQuantity },
+  });
+  const settleBorrowsInstruction = new TransactionInstruction({
+    keys: settleKeys,
+    data: setttleBorrowsData,
+    programId,
+  });
+  transaction.add(settleBorrowsInstruction);
+
+  const functionName = 'Deposit';
+  const sendingMessage = `Sending ${functionName} instruction...`;
+  const successMessage = `${functionName} instruction success`;
+  return await sendTransaction({
+    transaction,
+    wallet,
+    signers,
+    connection,
+    sendingMessage,
+    successMessage,
+  });
+}
+
 /**
  * If there is no mangoSrmAccount provided, it will create one in the same transaction
  */
@@ -1437,8 +1547,6 @@ async function packageAndSend(
   signers: Account[],
   functionName: string,
 ): Promise<TransactionSignature> {
-  const sendingMessage = `Sending ${functionName} instruction...`;
-  const successMessage = `${capitalize(functionName)} instruction success`;
   return await sendTransaction({
     transaction,
     wallet,

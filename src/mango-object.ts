@@ -1,6 +1,7 @@
 // @ts-nocheck
 import {
   borrowAndWithdraw,
+  deposit,
   getSymbolForTokenMintAddress,
   getTokenBalances,
   initMarginAccountAndDeposit,
@@ -53,11 +54,11 @@ export class MangoBorrowLending {
   }
 
   async getBalances() {
-    const { mangoGroup, symbols, client } = this;
+    const { mangoGroup, symbols, programId, client, wallet } = this;
     const ownerMarginAccounts = await client?.getMarginAccountsForOwner(
       connection,
       new PublicKey(programId),
-      mangoGroupToUse,
+      mangoGroup,
       wallet,
     );
 
@@ -86,6 +87,39 @@ export class MangoBorrowLending {
       settleQuantity,
     );
     this.getBalances();
+  }
+
+  async withdraw({
+    marginAccount,
+
+    token,
+    quantity,
+  }) {
+    const { connection, programId, mangoGroup, wallet } = this;
+    await withdraw(
+      connection,
+      programId,
+      mangoGroup,
+      marginAccount,
+      wallet,
+      token,
+      quantity,
+    );
+    this.getBalances();
+  }
+
+  async deposit({ selectedAccount, inputAmount, marginAccount }) {
+    const { connection, programId, mangoGroup, wallet } = this;
+    deposit(
+      connection,
+      new PublicKey(programId),
+      mangoGroup,
+      marginAccount,
+      wallet,
+      selectedAccount.account.mint,
+      selectedAccount.publicKey,
+      Number(inputAmount),
+    );
   }
   async borrow({ marginAccount, token, withdrawQuantity }) {
     const { connection, programId, wallet, mangoGroup } = this;

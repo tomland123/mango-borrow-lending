@@ -2,19 +2,20 @@
 import {
   borrowAndWithdraw,
   deposit,
+  getBalances,
+  getMarkets,
   getSymbolForTokenMintAddress,
-  getTokenBalances,
   initMarginAccountAndDeposit,
   settleBorrow,
 } from './utils';
-import { MangoClient, IDS } from '@blockworks-foundation/mango-client';
+import { MangoClient, IDS, sleep } from '@blockworks-foundation/mango-client';
 import { PublicKey, Connection } from '@solana/web3.js';
 import {
   formatTokenMints,
   getOwnedSplTokenAccounts,
   loadSerumMarkets,
 } from './utils';
-
+import _ from 'lodash';
 import { WRAPPED_SOL_MINT } from '@project-serum/serum/lib/token-instructions';
 
 export class MangoBorrowLending {
@@ -48,45 +49,100 @@ export class MangoBorrowLending {
     this.wallet = wallet;
     this.symbols = symbols;
     this.ownerMarginAccounts = ownerMarginAccounts;
-    this.prices = undefined;
+
     this.srmAccountInfo = undefined;
     this.mangoTokenInfo = undefined;
   }
 
   async getBalances() {
-    const { mangoGroup, symbols, programId, client, wallet } = this;
-    const ownerMarginAccounts = await client?.getMarginAccountsForOwner(
+    const {
+      client,
+      programId,
       connection,
-      new PublicKey(programId),
       mangoGroup,
+      markets,
       wallet,
-    );
+      symbols,
+      cluster,
+    } = this;
 
-    const modifiedOwnerMarginAccounts = ownerMarginAccounts.map((item) => {
-      const balances = getTokenBalances({
-        item,
-        symbols,
-        mangoGroup,
-      });
-      item.balances = balances;
-      return item;
+    const serumMarketId = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
+    const serumMarket = new PublicKey(serumMarketId);
+
+    const TOKEN_MINTS = formatTokenMints(IDS[cluster].symbols);
+
+    const loadedMarkets = await loadSerumMarkets({
+      url: IDS.cluster_urls[cluster],
+      accounts: mangoGroup.spotMarkets.map((item) => item.toBase58()),
+      serumMarket,
     });
 
-    this.ownerMarginAccounts = modifiedOwnerMarginAccounts;
-  }
-
-  async settle({ symbolPublicKey, marginAccount, settleQuantity }) {
-    const { connection, programId, mangoGroup, wallet } = this;
-    await settleBorrow(
+    const marketsToUse = getMarkets(loadedMarkets, TOKEN_MINTS, programId);
+    const ownerMarginAccounts = await client.getMarginAccountsForOwner(
       connection,
       programId,
       mangoGroup,
-      marginAccount,
       wallet,
-      symbolPublicKey,
-      settleQuantity,
     );
-    this.getBalances();
+
+    const tokens = await this.getTokensInWallet();
+
+    const modifiedOwnerMarginAccounts = ownerMarginAccounts.map(
+      (marginAccount) => {
+        const balances = getBalances({
+          markets: marketsToUse,
+          marginAccount,
+          symbols,
+          mangoGroup: mangoGroup,
+        });
+        marginAccount.balances = balances;
+        return marginAccount;
+      },
+    );
+
+    this.markets = markets;
+    this.ownerMarginAccounts = modifiedOwnerMarginAccounts;
+  }
+
+  async repay({ asset, marginAccount, tokenDetail, settleQuantity }) {
+    const { connection, programId, mangoGroup, wallet } = this;
+    const {
+      coin: token,
+      borrows: borrowQuantity,
+      marginDeposits: depositBalance,
+    } = asset;
+
+    if (!borrowQuantity) {
+      console.error('No borrows');
+      return;
+    } else if (borrowQuantity > depositBalance) {
+      const token = tokenDetail.account.mint;
+      const tokenAcc = tokenDetail.publicKey;
+
+      await deposit(
+        connection,
+        new PublicKey(programId),
+        mangoGroup,
+        marginAccount,
+        wallet,
+        token,
+        tokenAcc,
+        Number(settleQuantity),
+      );
+    } else {
+      await settleBorrow(
+        connection,
+        new PublicKey(programId),
+        mangoGroup,
+        marginAccount,
+        wallet,
+        new PublicKey(symbols[token]),
+        Number(borrowQuantity),
+      );
+    }
+
+    await sleep(250);
+    await this.getBalances();
   }
 
   async withdraw({
@@ -105,22 +161,11 @@ export class MangoBorrowLending {
       token,
       quantity,
     );
+    await sleep(250);
+
     this.getBalances();
   }
 
-  async deposit({ selectedAccount, inputAmount, marginAccount }) {
-    const { connection, programId, mangoGroup, wallet } = this;
-    deposit(
-      connection,
-      new PublicKey(programId),
-      mangoGroup,
-      marginAccount,
-      wallet,
-      selectedAccount.account.mint,
-      selectedAccount.publicKey,
-      Number(inputAmount),
-    );
-  }
   async borrow({ marginAccount, token, withdrawQuantity }) {
     const { connection, programId, wallet, mangoGroup } = this;
 
@@ -133,19 +178,11 @@ export class MangoBorrowLending {
       token,
       withdrawQuantity,
     );
+    await sleep(250);
+
     this.getBalances();
   }
   async settleAllBorrows() {}
-
-  async updateUserWalletData() {
-    const ownerMarginAccounts = await this.client.getMarginAccountsForOwner(
-      this.connection,
-      this.programId,
-      this.mangoGroup,
-      this.wallet,
-    );
-    this.ownerMarginAccounts = ownerMarginAccounts;
-  }
 
   async getTokensInWallet() {
     const splAccounts = await getOwnedSplTokenAccounts(
@@ -167,7 +204,11 @@ export class MangoBorrowLending {
           amount: account.lamports,
         },
       },
-    ].concat(splAccounts);
+    ].concat(
+      splAccounts.filter((account) =>
+        Object.keys(symbols).includes(account.type),
+      ),
+    );
 
     const symbolsForAccounts = activeWallets.map((a) =>
       getSymbolForTokenMintAddress(a.account.mint.toString()),
@@ -181,20 +222,37 @@ export class MangoBorrowLending {
 
     return { activeWallets, missingTokens };
   }
-  async deposit({ tokenDetail, quantity }) {
+
+  async deposit({ tokenDetail, quantity, marginAccount }) {
     const token = tokenDetail.account.mint;
     const tokenAcc = tokenDetail.publicKey;
 
-    const marginAccount = await initMarginAccountAndDeposit(
-      this.connection,
-      IDS[this.cluster].mango_program_id,
-      this.mangoGroup,
-      this.wallet,
-      token,
-      tokenAcc,
-      quantity,
-    );
-    return marginAccount;
+    if (!this?.ownerMarginAccounts?.length && !marginAccount) {
+      const marginAccount = await initMarginAccountAndDeposit(
+        this.connection,
+        IDS[this.cluster].mango_program_id,
+        this.mangoGroup,
+        this.wallet,
+        token,
+        tokenAcc,
+        quantity,
+      );
+      return marginAccount;
+    } else {
+      let marginAccountToUse = marginAccount
+        ? marginAccount
+        : this?.ownerMarginAccounts?.[0];
+      deposit(
+        this.connection,
+        IDS[this.cluster].mango_program_id,
+        this.mangoGroup,
+        marginAccountToUse,
+        this.wallet,
+        token,
+        tokenAcc,
+        quantity,
+      );
+    }
   }
   async fetchMangoGroup() {
     const { connection, mangoGroupName, cluster, client } = this;
@@ -219,40 +277,14 @@ export class MangoBorrowLending {
         this.srmAccountInfo = srmAccountInfo;
       });
   }
-  getMarkets() {
-    const { cluster, programId, mangoGroup, markets } = this;
-    const TOKEN_MINTS = formatTokenMints(IDS[cluster].symbols);
 
-    return Object.keys(markets).map(function (marketIndex) {
-      const market = markets[marketIndex];
-      const marketAddress = market ? market.publicKey.toString() : null;
-
-      const baseCurrency =
-        (market?.baseMintAddress &&
-          TOKEN_MINTS.find((token) =>
-            token.address.equals(market.baseMintAddress),
-          )?.name) ||
-        '...';
-
-      const quoteCurrency =
-        (market?.quoteMintAddress &&
-          TOKEN_MINTS.find((token) =>
-            token.address.equals(market.quoteMintAddress),
-          )?.name) ||
-        '...';
-
-      return {
-        market,
-        marketAddress,
-        programId,
-        baseCurrency,
-        quoteCurrency,
-      };
-    });
+  getMarginAccount(marginAccount) {
+    return marginAccount ? marginAccount : this?.ownerMarginAccounts?.[0];
   }
 
   static async create({
     cluster = 'mainnet-beta',
+    connectionSpeed = 'recent',
     mangoGroupName = 'BTC_ETH_SOL_SRM_USDC',
     markets = null,
     payerPriv = null,
@@ -260,12 +292,16 @@ export class MangoBorrowLending {
     wallet,
   }) {
     const client = new MangoClient();
-    const connection = new Connection(IDS.cluster_urls['mainnet-beta']);
-    const programId = new PublicKey(IDS['mainnet-beta'].mango_program_id);
+    const connection = new Connection(
+      IDS.cluster_urls[cluster],
+      connectionSpeed,
+    );
+    const programId = new PublicKey(IDS[cluster].mango_program_id);
     const clusterIds = IDS[cluster];
     const dexProgramId = new PublicKey(clusterIds.dex_program_id);
     const mangoGroupIds = clusterIds.mango_groups[mangoGroupName];
     const symbols = IDS[cluster]?.mango_groups[mangoGroupName]?.symbols;
+    const TOKEN_MINTS = formatTokenMints(IDS[cluster].symbols);
 
     let marketsToUse = markets;
 
@@ -277,11 +313,13 @@ export class MangoBorrowLending {
     const serumMarket = new PublicKey(serumMarketId);
 
     if (!marketsToUse && fetchMarkets) {
-      marketsToUse = await loadSerumMarkets({
+      const loadedMarkets = await loadSerumMarkets({
         url: IDS.cluster_urls['mainnet-beta'],
         accounts: mangoGroupToUse.spotMarkets.map((item) => item.toBase58()),
         serumMarket,
       });
+
+      marketsToUse = getMarkets(loadedMarkets, TOKEN_MINTS, programId);
     }
 
     const mangoGroupTokenMappings = new Map<TokenSymbol, PublicKey>();
@@ -308,15 +346,18 @@ export class MangoBorrowLending {
       wallet,
     );
 
-    const modifiedOwnerMarginAccounts = ownerMarginAccounts.map((item) => {
-      const balances = getTokenBalances({
-        item,
-        symbols,
-        mangoGroup: mangoGroupToUse,
-      });
-      item.balances = balances;
-      return item;
-    });
+    const modifiedOwnerMarginAccounts = ownerMarginAccounts.map(
+      (marginAccount) => {
+        const balances = getBalances({
+          markets: marketsToUse,
+          marginAccount,
+          symbols,
+          mangoGroup: mangoGroupToUse,
+        });
+        marginAccount.balances = balances;
+        return marginAccount;
+      },
+    );
 
     return new MangoBorrowLending(
       client,

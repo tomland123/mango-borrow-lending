@@ -16,3 +16,11 @@ export const tokenPrecision = {
   USDT: 2,
   WUSDT: 2,
 };
+export function ceilToDecimal(
+  value: number,
+  decimals: number | undefined | null,
+) {
+  return decimals
+    ? Math.ceil(value * 10 ** decimals) / 10 ** decimals
+    : Math.ceil(value);
+}

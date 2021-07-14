@@ -45,9 +45,10 @@ import {
   uiToNative,
   sleep,
   simulateTransaction,
+  nativeToUi,
 } from '@blockworks-foundation/mango-client';
 import * as bs58 from 'bs58';
-import { floorToDecimal, tokenPrecision } from './variables';
+import { ceilToDecimal, floorToDecimal, tokenPrecision } from './variables';
 
 const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID: PublicKey = new PublicKey(
   'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
@@ -167,7 +168,6 @@ export async function createAccountInstruction(
   owner: PublicKey,
   lamports?: number,
 ): Promise<{ account: Account; instruction: TransactionInstruction }> {
-  console.log(payer, owner);
   const account = new Account();
   const instruction = SystemProgram.createAccount({
     fromPubkey: payer,
@@ -224,8 +224,6 @@ export async function initMarginAccountAndDeposit(
     MarginAccountLayout.span,
     new PublicKey(programId),
   );
-
-  console.log(accInstr, 'account instr!!');
 
   // Specify the accounts this instruction takes in (see program/src/instruction.rs)
   const keys = [
@@ -760,6 +758,148 @@ export async function settleAllBorrows(
     successMessage,
   });
 }
+export function getMarkets(markets, TOKEN_MINTS, programId) {
+  const updatedMarkets = Object.keys(markets).map(function (marketIndex) {
+    const market = markets[marketIndex];
+    const marketAddress = market ? market.publicKey.toString() : null;
+
+    const baseCurrency =
+      (market?.baseMintAddress &&
+        TOKEN_MINTS.find((token) =>
+          token.address.equals(market.baseMintAddress),
+        )?.name) ||
+      '...';
+
+    const quoteCurrency =
+      (market?.quoteMintAddress &&
+        TOKEN_MINTS.find((token) =>
+          token.address.equals(market.quoteMintAddress),
+        )?.name) ||
+      '...';
+
+    return {
+      market,
+      marketAddress,
+      programId,
+      baseCurrency,
+      quoteCurrency,
+    };
+  });
+  return updatedMarkets;
+}
+export function getBalances({ markets, marginAccount, mangoGroup, symbols }) {
+  let balances = [];
+  let nativeQuoteFree = 0;
+  let nativeQuoteLocked = 0;
+  let nativeQuoteUnsettled = 0;
+
+  for (const { market, baseCurrency, quoteCurrency } of markets) {
+    if (!marginAccount || !mangoGroup || !market) {
+      return [];
+    }
+    const marketIndex = mangoGroup.getMarketIndex(market);
+    const openOrders: any = marginAccount.openOrdersAccounts[marketIndex];
+    const baseCurrencyIndex = Object.entries(symbols).findIndex(
+      (x) => x[0] === baseCurrency,
+    );
+    const quoteCurrencyIndex = Object.entries(symbols).findIndex(
+      (x) => x[0] === quoteCurrency,
+    );
+    if (
+      baseCurrency === 'UNKNOWN' ||
+      quoteCurrency === 'UNKNOWN' ||
+      !baseCurrency ||
+      !quoteCurrency
+    ) {
+      return [];
+    }
+    const nativeBaseFree = openOrders?.baseTokenFree || 0;
+    nativeQuoteFree += openOrders?.quoteTokenFree || 0;
+    const nativeBaseLocked = openOrders
+      ? openOrders.baseTokenTotal - nativeBaseFree
+      : 0;
+    nativeQuoteLocked += openOrders
+      ? openOrders?.quoteTokenTotal - nativeQuoteFree
+      : 0;
+    const nativeBaseUnsettled = openOrders?.baseTokenFree || 0;
+    nativeQuoteUnsettled += openOrders?.quoteTokenFree || 0;
+
+    const tokenIndex = marketIndex;
+
+    const net = (borrows, currencyIndex) => {
+      const amount =
+        marginAccount.getNativeDeposit(mangoGroup, currencyIndex) +
+        borrows -
+        marginAccount.getNativeBorrow(mangoGroup, currencyIndex);
+
+      return floorToDecimal(
+        nativeToUi(amount, mangoGroup.mintDecimals[currencyIndex]),
+        mangoGroup.mintDecimals[currencyIndex],
+      );
+    };
+
+    const marketPair = [
+      {
+        market,
+        key: `${baseCurrency}${quoteCurrency}${baseCurrency}`,
+        coin: baseCurrency,
+        marginDeposits: displayDepositsForMarginAccount(
+          marginAccount,
+          mangoGroup,
+          baseCurrencyIndex,
+        ),
+        borrows: displayBorrowsForMarginAccount(
+          marginAccount,
+          mangoGroup,
+          baseCurrencyIndex,
+        ),
+        orders: nativeToUi(
+          nativeBaseLocked,
+          mangoGroup.mintDecimals[tokenIndex],
+        ),
+        openOrders,
+        unsettled: nativeToUi(
+          nativeBaseUnsettled,
+          mangoGroup.mintDecimals[tokenIndex],
+        ),
+        net: net(nativeBaseLocked, tokenIndex),
+      },
+      {
+        market,
+        key: `${quoteCurrency}${baseCurrency}${quoteCurrency}`,
+        coin: quoteCurrency,
+        marginDeposits: displayDepositsForMarginAccount(
+          marginAccount,
+          mangoGroup,
+          quoteCurrencyIndex,
+        ),
+        borrows: displayBorrowsForMarginAccount(
+          marginAccount,
+          mangoGroup,
+          quoteCurrencyIndex,
+        ),
+        openOrders,
+        orders: nativeToUi(
+          nativeQuoteLocked,
+          mangoGroup.mintDecimals[quoteCurrencyIndex],
+        ),
+        unsettled: nativeToUi(
+          nativeQuoteUnsettled,
+          mangoGroup.mintDecimals[quoteCurrencyIndex],
+        ),
+        net: net(nativeQuoteLocked, quoteCurrencyIndex),
+      },
+    ];
+    balances = balances.concat(marketPair);
+  }
+
+  balances.sort((a, b) => (a.coin > b.coin ? 1 : -1));
+
+  balances = balances.filter((elem, index, self) => {
+    return index === self.map((a) => a.coin).indexOf(elem.coin);
+  });
+  return balances;
+}
 
 export async function deposit(
   connection: Connection,
@@ -996,8 +1136,6 @@ export async function placeAndSettle(
       .toNumber() *
       (1 + rates.taker),
   );
-
-  console.log(maxBaseQuantity.toString(), maxQuoteQuantity.toString());
 
   if (maxBaseQuantity.lte(new BN(0))) {
     throw new Error('size too small');
@@ -1553,15 +1691,12 @@ async function packageAndSend(
   connection: Connection,
   wallet: any,
   signers: Account[],
-  functionName: string,
 ): Promise<TransactionSignature> {
   return await sendTransaction({
     transaction,
     wallet,
     signers,
     connection,
-    sendingMessage,
-    successMessage,
   });
 }
 
@@ -1745,8 +1880,6 @@ export async function signTransactions({
 export async function sendSignedTransaction({
   signedTransaction,
   connection,
-  sendingMessage = 'Sending transaction...',
-  successMessage = 'Transaction confirmed',
   timeout = DEFAULT_TIMEOUT,
 }: {
   signedTransaction: Transaction;
@@ -1772,7 +1905,7 @@ export async function sendSignedTransaction({
       connection.sendRawTransaction(rawTransaction, {
         skipPreflight: true,
       });
-      await sleep(300);
+      await sleep(250);
     }
   })();
   try {
@@ -1885,7 +2018,7 @@ async function awaitTransactionSignatureConfirmation(
             }
           }
         })();
-        await sleep(300);
+        await sleep(250);
       }
     })();
   });
@@ -1893,12 +2026,12 @@ async function awaitTransactionSignatureConfirmation(
   return result;
 }
 
-export const getTokenBalances = ({ item, symbols, mangoGroup }) =>
+export const getTokenBalances = ({ marginAcc, symbols, mangoGroup }) =>
   Object.entries(symbols).map(([name], i) => {
     return {
       symbol: name,
       balance: floorToDecimal(
-        item.getUiDeposit(mangoGroup, i),
+        marginAcc.getUiDeposit(mangoGroup, i),
         tokenPrecision[name],
       ),
     };
@@ -1912,7 +2045,6 @@ export const loadSerumMarkets = async ({
   quoteMintDecimals = 6,
   baseMintDecimals = 6,
 }) => {
-  console.log(accounts);
   const { data: accountsData } = await axios.post(url, {
     jsonrpc: '2.0',
     id: '1',
@@ -1936,4 +2068,120 @@ export const loadSerumMarkets = async ({
   });
 
   return getAllMarkets;
+};
+
+export function displayDepositsForMarginAccount(
+  marginAccount,
+  mangoGroup,
+  tokenIndex,
+) {
+  const deposit = marginAccount.getUiDeposit(mangoGroup, tokenIndex);
+  const decimals = mangoGroup.mintDecimals[tokenIndex];
+  return floorToDecimal(deposit, decimals);
+}
+
+export function displayBorrowsForMarginAccount(
+  marginAccount,
+  mangoGroup,
+  tokenIndex,
+) {
+  const borrow = marginAccount.getUiBorrow(mangoGroup, tokenIndex);
+  const decimals = mangoGroup.mintDecimals[tokenIndex];
+  return ceilToDecimal(borrow, decimals);
+}
+
+export function getDecimalCount(value): number {
+  if (
+    !isNaN(value) &&
+    Math.floor(value) !== value &&
+    value.toString().includes('.')
+  )
+    return value.toString().split('.')[1].length || 0;
+  if (
+    !isNaN(value) &&
+    Math.floor(value) !== value &&
+    value.toString().includes('e')
+  )
+    return parseInt(value.toString().split('e-')[1] || '0');
+  return 0;
+}
+
+export function divideBnToNumber(numerator: BN, denominator: BN): number {
+  const quotient = numerator.div(denominator).toNumber();
+  const rem = numerator.umod(denominator);
+  const gcd = rem.gcd(denominator);
+  return quotient + rem.div(gcd).toNumber() / denominator.div(gcd).toNumber();
+}
+
+export const formatBalanceDisplay = (balance, fixedDecimals) => {
+  // Get the decimal part
+  const dPart = balance - Math.trunc(balance);
+  return (
+    Math.trunc(balance) +
+    Math.floor(dPart * Math.pow(10, fixedDecimals)) /
+      Math.pow(10, fixedDecimals)
+  );
+};
+
+export function getTokenMultiplierFromDecimals(decimals: number): BN {
+  return new BN(10).pow(new BN(decimals));
+}
+
+export function abbreviateAddress(address: PublicKey, size = 5) {
+  const base58 = address.toBase58();
+  return base58.slice(0, size) + '…' + base58.slice(-size);
+}
+
+export function isEqual(obj1, obj2, keys) {
+  if (!keys && Object.keys(obj1).length !== Object.keys(obj2).length) {
+    return false;
+  }
+  keys = keys || Object.keys(obj1);
+  for (const k of keys) {
+    if (obj1[k] !== obj2[k]) {
+      // shallow comparison
+      return false;
+    }
+  }
+  return true;
+}
+
+export function groupBy(list, keyGetter) {
+  const map = new Map();
+  list.forEach((item) => {
+    const key = keyGetter(item);
+    const collection = map.get(key);
+    if (!collection) {
+      map.set(key, [item]);
+    } else {
+      collection.push(item);
+    }
+  });
+  return map;
+}
+
+export function isDefined<T>(argument: T | undefined): argument is T {
+  return argument !== undefined;
+}
+
+export const calculateMarketPrice = (
+  orderBook: Array<any>,
+  size: number,
+  side: string,
+) => {
+  let acc = 0;
+  let selectedOrder;
+  for (const order of orderBook) {
+    acc += order[1];
+    if (acc >= size) {
+      selectedOrder = order;
+      break;
+    }
+  }
+
+  if (side === 'buy') {
+    return selectedOrder[0] * 1.05;
+  } else {
+    return selectedOrder[0] * 0.95;
+  }
 };

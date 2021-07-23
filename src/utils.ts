@@ -503,6 +503,7 @@ export async function borrowAndWithdraw(
   const signers = [];
   let tokenAcc = await findAssociatedTokenAddress(wallet.publicKey, token);
 
+  debugger;
   let wrappedSolAccount: Account | null = null;
   if (token.equals(WRAPPED_SOL_MINT)) {
     wrappedSolAccount = new Account();

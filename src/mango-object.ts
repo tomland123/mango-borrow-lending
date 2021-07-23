@@ -105,6 +105,7 @@ export class MangoBorrowLending {
   }
 
   async repay({ asset, marginAccount, tokenDetail, settleQuantity }) {
+    console.log(asset, marginAccount, tokenDetail, settleQuantity);
     const { connection, programId, mangoGroup, wallet } = this;
     const {
       coin: token,
@@ -167,7 +168,9 @@ export class MangoBorrowLending {
   }
 
   async borrow({ marginAccount, token, withdrawQuantity }) {
+    return '@tasdfasdf';
     const { connection, programId, wallet, mangoGroup } = this;
+    console.log('we borrowing mates');
 
     await borrowAndWithdraw(
       connection,

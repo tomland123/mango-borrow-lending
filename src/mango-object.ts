@@ -7,14 +7,13 @@ import {
   getSymbolForTokenMintAddress,
   initMarginAccountAndDeposit,
   settleBorrow,
-} from './utils';
-import { MangoClient, IDS, sleep } from '@blockworks-foundation/mango-client';
-import { PublicKey, Connection } from '@solana/web3.js';
-import {
   formatTokenMints,
   getOwnedSplTokenAccounts,
   loadSerumMarkets,
 } from './utils';
+import { MangoClient, IDS, sleep } from '@blockworks-foundation/mango-client';
+import { PublicKey, Connection } from '@solana/web3.js';
+
 import _ from 'lodash';
 import { WRAPPED_SOL_MINT } from '@project-serum/serum/lib/token-instructions';
 
@@ -168,9 +167,7 @@ export class MangoBorrowLending {
   }
 
   async borrow({ marginAccount, token, withdrawQuantity }) {
-    return '@tasdfasdf';
     const { connection, programId, wallet, mangoGroup } = this;
-    console.log('we borrowing mates');
 
     await borrowAndWithdraw(
       connection,
@@ -181,9 +178,9 @@ export class MangoBorrowLending {
       token,
       withdrawQuantity,
     );
+
     await sleep(250);
 
-    this.getBalances();
   }
   async settleAllBorrows() {}
 

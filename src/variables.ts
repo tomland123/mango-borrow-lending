@@ -1,3 +1,5 @@
+import { PublicKey } from '@solana/web3.js';
+
 export function floorToDecimal(
   value: number,
   decimals: number | undefined | null,
@@ -24,3 +26,6 @@ export function ceilToDecimal(
     ? Math.ceil(value * 10 ** decimals) / 10 ** decimals
     : Math.ceil(value);
 }
+
+export const serumMarketId = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
+export const serumMarket = new PublicKey(serumMarketId);

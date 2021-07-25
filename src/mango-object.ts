@@ -6,12 +6,12 @@ import {
   getMarkets,
   getSymbolForTokenMintAddress,
   initMarginAccountAndDeposit,
-  settleBorrow,
   formatTokenMints,
   getOwnedSplTokenAccounts,
   loadSerumMarkets,
 } from './utils';
-import { MangoClient, IDS, sleep } from '@blockworks-foundation/mango-client';
+import { serumMarket } from './variables';
+import { MangoClient, IDS } from '@blockworks-foundation/mango-client';
 import { PublicKey, Connection } from '@solana/web3.js';
 
 import _ from 'lodash';
@@ -65,9 +65,6 @@ export class MangoBorrowLending {
       cluster,
     } = this;
 
-    const serumMarketId = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
-    const serumMarket = new PublicKey(serumMarketId);
-
     const TOKEN_MINTS = formatTokenMints(IDS[cluster].symbols);
 
     const loadedMarkets = await loadSerumMarkets({
@@ -104,44 +101,25 @@ export class MangoBorrowLending {
   }
 
   async repay({ asset, marginAccount, tokenDetail, settleQuantity }) {
-    console.log(asset, marginAccount, tokenDetail, settleQuantity);
     const { connection, programId, mangoGroup, wallet } = this;
-    const {
-      coin: token,
-      borrows: borrowQuantity,
-      marginDeposits: depositBalance,
-    } = asset;
+    const { borrows, deposits } = asset;
 
-    if (!borrowQuantity) {
+    if (!borrows) {
       console.error('No borrows');
       return;
-    } else if (borrowQuantity > depositBalance) {
-      const token = tokenDetail.account.mint;
-      const tokenAcc = tokenDetail.publicKey;
-
-      await deposit(
-        connection,
-        new PublicKey(programId),
-        mangoGroup,
-        marginAccount,
-        wallet,
-        token,
-        tokenAcc,
-        Number(settleQuantity),
-      );
-    } else {
-      await settleBorrow(
-        connection,
-        new PublicKey(programId),
-        mangoGroup,
-        marginAccount,
-        wallet,
-        new PublicKey(symbols[token]),
-        Number(borrowQuantity),
-      );
     }
 
-    await sleep(250);
+    await deposit(
+      connection,
+      new PublicKey(programId),
+      mangoGroup,
+      marginAccount,
+      wallet,
+      token,
+      tokenAcc,
+      Number(settleQuantity),
+    );
+
     await this.getBalances();
   }
 
@@ -161,7 +139,6 @@ export class MangoBorrowLending {
       token,
       quantity,
     );
-    await sleep(250);
 
     this.getBalances();
   }
@@ -178,9 +155,6 @@ export class MangoBorrowLending {
       token,
       withdrawQuantity,
     );
-
-    await sleep(250);
-
   }
   async settleAllBorrows() {}
 
@@ -309,8 +283,6 @@ export class MangoBorrowLending {
       clusterIds.mango_groups[mangoGroupName].mango_group_pk,
     );
     let mangoGroupToUse = await client.getMangoGroup(connection, mangoGroupPk);
-    const serumMarketId = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
-    const serumMarket = new PublicKey(serumMarketId);
 
     if (!marketsToUse && fetchMarkets) {
       const loadedMarkets = await loadSerumMarkets({

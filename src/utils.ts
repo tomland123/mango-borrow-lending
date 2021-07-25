@@ -843,7 +843,7 @@ export function getBalances({ markets, marginAccount, mangoGroup, symbols }) {
         market,
         key: `${baseCurrency}${quoteCurrency}${baseCurrency}`,
         coin: baseCurrency,
-        marginDeposits: displayDepositsForMarginAccount(
+        deposits: displayDepositsForMarginAccount(
           marginAccount,
           mangoGroup,
           baseCurrencyIndex,
@@ -868,7 +868,7 @@ export function getBalances({ markets, marginAccount, mangoGroup, symbols }) {
         market,
         key: `${quoteCurrency}${baseCurrency}${quoteCurrency}`,
         coin: quoteCurrency,
-        marginDeposits: displayDepositsForMarginAccount(
+        deposits: displayDepositsForMarginAccount(
           marginAccount,
           mangoGroup,
           quoteCurrencyIndex,
@@ -1905,7 +1905,6 @@ export async function sendSignedTransaction({
       connection.sendRawTransaction(rawTransaction, {
         skipPreflight: true,
       });
-      await sleep(250);
     }
   })();
   try {
@@ -2018,7 +2017,6 @@ async function awaitTransactionSignatureConfirmation(
             }
           }
         })();
-        await sleep(250);
       }
     })();
   });

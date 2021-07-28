@@ -91,8 +91,8 @@ export class MangoBorrowLending {
           symbols,
           mangoGroup: mangoGroup,
         });
-        const prices = marginAccount.mangoGroup.getPrices(connection);
-        marginAccount.prices = prices;
+        // const prices = marginAccount.mangoGroup.getPrices(connection);
+        // marginAccount.prices = prices;
         marginAccount.balances = balances;
         return marginAccount;
       },
@@ -328,8 +328,8 @@ export class MangoBorrowLending {
           symbols,
           mangoGroup: mangoGroupToUse,
         });
-        const prices = marginAccount.mangoGroup.getPrices(connection);
-        marginAccount.prices = prices;
+        // const prices = marginAccount?.mangoGroup?.getPrices(connection);
+        // marginAccount.prices = prices;
 
         marginAccount.balances = balances;
         return marginAccount;

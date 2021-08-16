@@ -34,7 +34,7 @@ import {
 } from '@blockworks-foundation/mango-client/lib/instruction';
 import { Market } from '@project-serum/serum';
 
-import { _MARKET_STATE_LAYOUT_V2 } from '@project-serum/serum/lib/market';
+import { MARKET_STATE_LAYOUT_V2 } from '@project-serum/serum/lib/market';
 
 import {
   MangoGroup,
@@ -384,10 +384,16 @@ export async function withdraw(
   token: PublicKey,
   quantity: number,
 ): Promise<TransactionSignature> {
+  let tokenAcc = await findAssociatedTokenAddress(wallet.publicKey, token);
+  console.log(
+    WRAPPED_SOL_MINT,
+    token,
+    'aasdfasdgasdgadsfasdf',
+    token.equals(WRAPPED_SOL_MINT),
+  );
+
   const transaction = new Transaction();
   const signers = [];
-  let tokenAcc = await findAssociatedTokenAddress(wallet.publicKey, token);
-
   let wrappedSolAccount: Account | null = null;
   if (token.equals(WRAPPED_SOL_MINT)) {
     wrappedSolAccount = new Account();
@@ -787,7 +793,13 @@ export function getMarkets(markets, TOKEN_MINTS, programId) {
   });
   return updatedMarkets;
 }
-export function getBalances({ markets, marginAccount, mangoGroup, symbols }) {
+export function getBalances({
+  markets,
+  prices,
+  marginAccount,
+  mangoGroup,
+  symbols,
+}) {
   let balances = [];
   let nativeQuoteFree = 0;
   let nativeQuoteLocked = 0;
@@ -1804,6 +1816,9 @@ export async function sendTransaction({
   sendingMessage = 'Sending transaction...',
   successMessage = 'Transaction confirmed',
   timeout = DEFAULT_TIMEOUT,
+  onStateChange = (e) => {
+    console.log(e);
+  },
 }: {
   transaction: Transaction;
   wallet: any;
@@ -1818,12 +1833,14 @@ export async function sendTransaction({
     wallet,
     signers,
     connection,
+    onStateChange,
   });
   return await sendSignedTransaction({
     signedTransaction,
     connection,
     sendingMessage,
     successMessage,
+    onStateChange,
     timeout,
   });
 }
@@ -1833,12 +1850,16 @@ export async function signTransaction({
   wallet,
   signers = [],
   connection,
+  onStateChange = () => {},
 }: {
   transaction: Transaction;
   wallet: any;
   signers?: Array<Account>;
   connection: Connection;
 }) {
+  onStateChange({
+    transactionStatus: 'Signing',
+  });
   transaction.recentBlockhash = (
     await connection.getRecentBlockhash('max')
   ).blockhash;
@@ -1846,6 +1867,10 @@ export async function signTransaction({
   if (signers.length > 0) {
     transaction.partialSign(...signers);
   }
+  onStateChange({
+    transaction,
+    transactionStatus: 'Signed',
+  });
   return await wallet.signTransaction(transaction);
 }
 
@@ -1877,36 +1902,141 @@ export async function signTransactions({
   );
 }
 
+export async function awaitTransactionSignatureConfirmation(
+  txid: TransactionSignature,
+  timeout: number,
+  connection: Connection,
+  confirmLevel: any,
+  onStateChange = () => {},
+) {
+  let done = false;
+  onStateChange({
+    txid,
+    transactionStatus: 'Confirming',
+  });
+  const confirmLevels: (any | null | undefined)[] = ['finalized'];
+  if (confirmLevel === 'confirmed') {
+    confirmLevels.push('confirmed');
+  } else if (confirmLevel === 'processed') {
+    confirmLevels.push('confirmed');
+    confirmLevels.push('processed');
+  }
+
+  const result = await new Promise((resolve, reject) => {
+    (async () => {
+      setTimeout(() => {
+        if (done) {
+          return;
+        }
+        done = true;
+        console.log('Timed out for txid', txid);
+        reject({ timeout: true });
+      }, timeout);
+      try {
+        connection.onSignature(
+          txid,
+          (result) => {
+            // console.log('WS confirmed', txid, result);
+            done = true;
+            if (result.err) {
+              reject(result.err);
+            } else {
+              resolve(result);
+            }
+          },
+          'singleGossip',
+        );
+        // console.log('Set up WS connection', txid);
+      } catch (e) {
+        done = true;
+        console.log('WS error in setup', txid, e);
+      }
+      while (!done) {
+        // eslint-disable-next-line no-loop-func
+        (async () => {
+          try {
+            const signatureStatuses = await connection.getSignatureStatuses([
+              txid,
+            ]);
+            const result = signatureStatuses && signatureStatuses.value[0];
+            if (!done) {
+              if (!result) {
+                // console.log('REST null result for', txid, result);
+              } else if (result.err) {
+                console.log('REST error for', txid, result);
+                done = true;
+                reject(result.err);
+              } else if (
+                !(
+                  result.confirmations ||
+                  confirmLevels.includes(result.confirmationStatus)
+                )
+              ) {
+                console.log('REST not confirmed', txid, result);
+              } else {
+                console.log('REST confirmed', txid, result);
+                done = true;
+                resolve(result);
+              }
+            }
+          } catch (e) {
+            if (!done) {
+              console.log('REST connection error: txid', txid, e);
+            }
+          }
+        })();
+        await sleep(300);
+      }
+    })();
+  });
+  onStateChange({
+    txid,
+    transactionStatus: 'Confirmed',
+  });
+  done = true;
+  return result;
+}
+
 export async function sendSignedTransaction({
   signedTransaction,
   connection,
+  sendingMessage,
+  successMessage,
   timeout = DEFAULT_TIMEOUT,
+  onStateChange = () => {},
 }: {
   signedTransaction: Transaction;
   connection: Connection;
   sendingMessage?: string;
   successMessage?: string;
   timeout?: number;
+  onStateChange?: func;
 }): Promise<string> {
   const rawTransaction = signedTransaction.serialize();
+  onStateChange({
+    signedTransaction,
+    transactionStatus: 'Sending Signed Transaction',
+  });
+
   const startTime = getUnixTs();
+  console.log(startTime, rawTransaction);
   const txid: TransactionSignature = await connection.sendRawTransaction(
     rawTransaction,
     {
       skipPreflight: true,
     },
   );
-
-  console.log('Started awaiting confirmation for', txid);
-
   let done = false;
   (async () => {
-    while (!done && getUnixTs() - startTime < timeout) {
+    while (!done && getUnixTs() - startTime < timeout / 1000) {
       connection.sendRawTransaction(rawTransaction, {
         skipPreflight: true,
       });
+      await sleep(2000);
     }
   })();
+  console.log('Started awaiting confirmation for', txid);
+
   try {
     await awaitTransactionSignatureConfirmation(txid, timeout, connection);
   } catch (err) {
@@ -1939,89 +2069,13 @@ export async function sendSignedTransaction({
   } finally {
     done = true;
   }
-
-  console.log('Latency', txid, getUnixTs() - startTime);
-  return txid;
-}
-
-async function awaitTransactionSignatureConfirmation(
-  txid: TransactionSignature,
-  timeout: number,
-  connection: Connection,
-) {
-  let done = false;
-  const result = await new Promise((resolve, reject) => {
-    // eslint-disable-next-line
-    (async () => {
-      setTimeout(() => {
-        if (done) {
-          return;
-        }
-        done = true;
-        console.log('Timed out for txid', txid);
-        reject({ timeout: true });
-      }, timeout);
-      try {
-        connection.onSignature(
-          txid,
-          (result) => {
-            console.log('WS confirmed', txid, result);
-            done = true;
-            if (result.err) {
-              reject(result.err);
-            } else {
-              resolve(result);
-            }
-          },
-          connection.commitment,
-        );
-        console.log('Set up WS connection', txid);
-      } catch (e) {
-        done = true;
-        console.log('WS error in setup', txid, e);
-      }
-      while (!done) {
-        // eslint-disable-next-line
-        (async () => {
-          try {
-            const signatureStatuses = await connection.getSignatureStatuses([
-              txid,
-            ]);
-            const result = signatureStatuses && signatureStatuses.value[0];
-            if (!done) {
-              if (!result) {
-                // console.log('REST null result for', txid, result);
-              } else if (result.err) {
-                console.log('REST error for', txid, result);
-                done = true;
-                reject(result.err);
-              }
-              // @ts-ignore
-              else if (
-                !(
-                  result.confirmations ||
-                  result.confirmationStatus === 'confirmed' ||
-                  result.confirmationStatus === 'finalized'
-                )
-              ) {
-                console.log('REST not confirmed', txid, result);
-              } else {
-                console.log('REST confirmed', txid, result);
-                done = true;
-                resolve(result);
-              }
-            }
-          } catch (e) {
-            if (!done) {
-              console.log('REST connection error: txid', txid, e);
-            }
-          }
-        })();
-      }
-    })();
+  onStateChange({
+    signedTransaction,
+    transactionStatus: 'Transaction Completed',
   });
-  done = true;
-  return result;
+
+  // console.log('Latency', txid, getUnixTs() - startTime);
+  return txid;
 }
 
 export const getTokenBalances = ({ marginAcc, symbols, mangoGroup }) =>
@@ -2054,7 +2108,8 @@ export const loadSerumMarkets = async ({
     const { data } = item;
 
     const myBuffer = Buffer.from(data[0], data[1]);
-    const decoded = _MARKET_STATE_LAYOUT_V2.decode(myBuffer);
+
+    const decoded = MARKET_STATE_LAYOUT_V2.decode(myBuffer);
 
     return new Market(
       decoded,

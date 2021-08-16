@@ -9,6 +9,7 @@ import {
   formatTokenMints,
   getOwnedSplTokenAccounts,
   loadSerumMarkets,
+  withdraw,
 } from './utils';
 import { serumMarket } from './variables';
 import { MangoClient, IDS } from '@blockworks-foundation/mango-client';
@@ -74,29 +75,41 @@ export class MangoBorrowLending {
     });
 
     const marketsToUse = getMarkets(loadedMarkets, TOKEN_MINTS, programId);
-    const ownerMarginAccounts = await client.getMarginAccountsForOwner(
-      connection,
-      programId,
-      mangoGroup,
-      wallet,
-    );
 
-    const tokens = await this.getTokensInWallet();
+    const [ownerMarginAccounts, tokens, prices] = await Promise.all([
+      await client.getMarginAccountsForOwner(
+        connection,
+        programId,
+        mangoGroup,
+        wallet,
+      ),
+      await this.getTokensInWallet(),
+      await mangoGroup.getPrices(connection),
+    ]);
 
-    const modifiedOwnerMarginAccounts = ownerMarginAccounts.map(
-      (marginAccount) => {
+    const modifiedOwnerMarginAccounts = ownerMarginAccounts
+      .map((marginAccount) => {
         const balances = getBalances({
           markets: marketsToUse,
           marginAccount,
           symbols,
           mangoGroup: mangoGroup,
         });
-        // const prices = marginAccount.mangoGroup.getPrices(connection);
-        // marginAccount.prices = prices;
+        // this is bad because getPrices isnt in some deterministic order
+        const usePrices = prices.map((price, i) => {
+          return {
+            price,
+            coin: balances[i].coin,
+          };
+        });
+
+        marginAccount.prices = usePrices;
         marginAccount.balances = balances;
         return marginAccount;
-      },
-    );
+      })
+      .sort((marginA, marginB) => {
+        return marginA.publicKey.toString() - marginB.publicKey.toString();
+      });
 
     this.markets = markets;
     this.ownerMarginAccounts = modifiedOwnerMarginAccounts;
@@ -117,7 +130,7 @@ export class MangoBorrowLending {
       mangoGroup,
       marginAccount,
       wallet,
-      token,
+      tokenDetail,
       tokenAcc,
       Number(settleQuantity),
     );
@@ -132,31 +145,40 @@ export class MangoBorrowLending {
     quantity,
   }) {
     const { connection, programId, mangoGroup, wallet } = this;
+
+    let marginAccountToUse = marginAccount
+      ? marginAccount
+      : this?.ownerMarginAccounts?.[0];
+
     await withdraw(
       connection,
       programId,
       mangoGroup,
-      marginAccount,
+      marginAccountToUse,
       wallet,
       token,
       quantity,
     );
 
-    this.getBalances();
+    await this.getBalances();
   }
 
   async borrow({ marginAccount, token, withdrawQuantity }) {
     const { connection, programId, wallet, mangoGroup } = this;
+    let marginAccountToUse = marginAccount
+      ? marginAccount
+      : this?.ownerMarginAccounts?.[0];
 
     await borrowAndWithdraw(
       connection,
       programId,
       mangoGroup,
-      marginAccount,
+      marginAccountToUse,
       wallet,
       token,
       withdrawQuantity,
     );
+    await this.getBalances();
   }
   async settleAllBorrows() {}
 
@@ -218,7 +240,7 @@ export class MangoBorrowLending {
       let marginAccountToUse = marginAccount
         ? marginAccount
         : this?.ownerMarginAccounts?.[0];
-      deposit(
+      await deposit(
         this.connection,
         IDS[this.cluster].mango_program_id,
         this.mangoGroup,
@@ -228,6 +250,7 @@ export class MangoBorrowLending {
         tokenAcc,
         quantity,
       );
+      await this.getBalances();
     }
   }
   async fetchMangoGroup() {
@@ -272,6 +295,8 @@ export class MangoBorrowLending {
       IDS.cluster_urls[cluster],
       connectionSpeed,
     );
+
+    console.log(connection, 'connection', wallet, 'wallet');
     const programId = new PublicKey(IDS[cluster].mango_program_id);
     const clusterIds = IDS[cluster];
     const dexProgramId = new PublicKey(clusterIds.dex_program_id);
@@ -313,28 +338,45 @@ export class MangoBorrowLending {
       mangoGroupSportMarketMappings[spotMarketSymbol] = new PublicKey(address);
     }
 
-    const ownerMarginAccounts = await client.getMarginAccountsForOwner(
-      connection,
-      programId,
-      mangoGroupToUse,
-      wallet,
-    );
+    const [ownerMarginAccounts, prices] = await Promise.all([
+      await client.getMarginAccountsForOwner(
+        connection,
+        programId,
+        mangoGroupToUse,
+        wallet,
+      ),
+      await mangoGroupToUse.getPrices(connection),
+    ]);
 
-    const modifiedOwnerMarginAccounts = ownerMarginAccounts.map(
-      (marginAccount) => {
+    console.log(ownerMarginAccounts, prices, '???');
+
+    const modifiedOwnerMarginAccounts = ownerMarginAccounts
+      .map((marginAccount) => {
         const balances = getBalances({
           markets: marketsToUse,
           marginAccount,
           symbols,
           mangoGroup: mangoGroupToUse,
         });
-        // const prices = marginAccount?.mangoGroup?.getPrices(connection);
-        // marginAccount.prices = prices;
+
+        // this is bad because getPrices isnt in some deterministic order
+        const usePrices = prices.map((price, i) => {
+          return {
+            price,
+            coin: balances[i].coin,
+          };
+        });
+
+        console.log(usePrices);
+        marginAccount.prices = usePrices;
 
         marginAccount.balances = balances;
         return marginAccount;
-      },
-    );
+      })
+      .sort((marginA, marginB) => {
+        return marginA.publicKey.toString() - marginB.publicKey.toString();
+      });
+    console.log('modifiedOwnerMarginAccounts', modifiedOwnerMarginAccounts);
 
     return new MangoBorrowLending(
       client,

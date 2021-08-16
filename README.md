@@ -16,21 +16,21 @@ Easily deposit, refetch, borrow, or withdraw money from Mango
 ```   
 await mango.withdraw({
       token: new PublicKey("mango supported currency"),
-      quantity: withdrawValue,
+      quantity: quantity,
     });
 ```
 
 ```   
 await mango.deposit({
       tokenDetail: mangoToken,
-      quantity: withdrawValue,
+      quantity: quantity,
     });
 ```
 
 ```
   await mango.borrow({
       token: new PublicKey("mango supported currency"),
-      withdrawQuantity: withdrawValue,
+      withdrawQuantity: withdrawQuantity,
     });
 ```
 

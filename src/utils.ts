@@ -2010,7 +2010,7 @@ export async function sendSignedTransaction({
   sendingMessage?: string;
   successMessage?: string;
   timeout?: number;
-  onStateChange?: func;
+  onStateChange?: any;
 }): Promise<string> {
   const rawTransaction = signedTransaction.serialize();
   onStateChange({
